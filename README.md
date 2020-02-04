@@ -1,7 +1,7 @@
 # Passo a Passo - Ambiente Desenvolvimento Linux Mint 19.2
 
-###1. Instalando o Node.JS e o NPM
-#####Todos os comando é com o terminal aberto
+### 1. Instalando o Node.JS e o NPM
+##### Todos os comando é com o terminal aberto
 * Instalando o nvm (Gerenciador de Pacotes para escolher versões no Node.JS)
   * Seguir os passos do site do [NVM](
   https://github.com/nvm-sh/nvm#installing-and-updating);
@@ -16,7 +16,7 @@
   ```npm -v``` 
 para verificar a versão do NPM. 
 
-###2. Instalando o YARN
+### 2. Instalando o YARN
 * Ir no site do [YARN](https://legacy.yarnpkg.com/en/)
 * Executar os seguintes comandos: 
   1. ```curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -```
@@ -25,7 +25,7 @@ para verificar a versão do NPM.
   
   3. ```sudo apt update && sudo apt install --no-install-recommends yarn```
 * Execute ```yarn -v``` para verificar a versão instalada.
-###2. Iniciando a aplicação Node.JS
+### 2. Iniciando a aplicação Node.JS
 * Criar um diretório com o nome do Projeto (Trocar a variável nomeDoProjeto pelo nome do projeto que vai ser iniciado): 
   ```mkdir nomeDoProjeto```
 * Ir até o diretório criado
