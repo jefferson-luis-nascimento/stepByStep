@@ -227,3 +227,34 @@ para verificar a versão do NPM.
   trim_trailing_whitespace = true
   insert_final_newline = true
   ```
+* Configurando a estrutura de pastas e arquivos e o Sequelize
+  * Na pasta src, criar as seguintes pastas e arquivos: 
+    * config
+      * database.js
+    * database
+      * migrations
+    * app
+      * controllers
+      * models
+  * Instalar o Sequelize:
+    ~~~
+    yarn add sequelize
+    ~~~
+    ~~~
+    yarn add sequelize-cli -D
+    ~~~
+  * Como vai ser usado o postgres como banco de dados, executar os seguintes comandos:
+  ```yarn add pg@^7.0.0``` e
+  ```yarn add pg-hstore```
+  * Criar um arquivo chamado .sequelizerc e incluir o código abaixo ([Material de Apoio](https://sequelize.org/v5/manual/dialects.html)):
+    ~~~javascript
+    const { resolve } = require('path');
+
+    module.exports = {
+      config: resolve(__dirname, 'src', 'config', 'database.js'),
+      'models-path': resolve(__dirname, 'src', 'app', 'models'),
+      'migrations-path': resolve(__dirname, 'src', 'database', 'migrations'),
+      'seeds-path': resolve(__dirname, 'src', 'database', 'seeds'),
+    };
+    ~~~
+
