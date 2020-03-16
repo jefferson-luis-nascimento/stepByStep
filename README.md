@@ -257,4 +257,289 @@ para verificar a versão do NPM.
       'seeds-path': resolve(__dirname, 'src', 'database', 'seeds'),
     };
     ~~~
+* Criando as Migrations:
+  * Para criar uma migration para uma tabela chamada users:
+    * executar o comando 
+    ~~~
+    yarn sequelize migration:create --name=create-users
+    ~~~
+  * no arquivo gerado em src/database/migrations/(*create-users.js), incluir o código abaixo:
+  ~~~javascript
+    module.exports = {
+      up: (queryInterface, Sequelize) => {
+        return queryInterface.createTable('users', {
+          id: {
+            type: Sequelize.INTEGER,
+            allowNull: false,
+            autoIncrement: true,
+            primaryKey: true,
+          },
+          name: {
+            type: Sequelize.STRING,
+            allowNull: false,
+          },
+          email: {
+            type: Sequelize.STRING,
+            allowNull: false,
+            unique: true,
+          },
+          password_hash: {
+            type: Sequelize.STRING,
+            allowNull: false,
+          },
+          created_at: {
+            type: Sequelize.DATE,
+            allowNull: false,
+          },
+          updated_at: {
+            type: Sequelize.DATE,
+            allowNull: false,
+          },
+        });
+      },
+
+      down: queryInterface => {
+        return queryInterface.dropTable('users');
+      },
+    };
+  ~~~
+  * Executar o comando abaixo para executar as migrations criar a tabela no banco de dados:
+    ```
+    yarn sequelize db:migrate
+    ```
+    * (Opcional) Comandos extras para desfazer as migrations:
+      * Desfazer a última:
+        ```
+        yarn sequelize db:migrate:undo
+        ```
+      * Desfazer a todas:
+        ```
+        yarn sequelize db:migrate:undo:all
+        ```
+
+* Criando os models:
+  * Adicionar a dependencia do bcrypt do javascript:
+    ```
+    yarn add bcryptjs
+    ```
+  * no diretório src/app/models, criar o arquivo User.js e incluir o seguinte código:
+  ~~~javascript
+  import Sequelize, { Model } from 'sequelize';
+  import bcrypt from 'bcryptjs';
+
+  class User extends Model {
+    static init(sequelize) {
+      super.init(
+        {
+          name: Sequelize.STRING,
+          email: Sequelize.STRING,
+          password: Sequelize.VIRTUAL,
+          password_hash: Sequelize.STRING,
+        },
+        {
+          sequelize,
+        }
+      );
+
+      this.addHook('beforeSave', async user => {
+        if (user.password) {
+          user.password_hash = await bcrypt.hash(user.password, 8);
+        }
+      });
+
+      return this;
+    }
+  }
+
+  export default User;
+
+  ~~~
+* Criando o loader dos models:
+  * Criar o arquivo index.js na pasta src/database e incluir o seguinte código:
+    ~~~javascript
+    import Sequelize from 'sequelize';
+
+    import User from '../app/models/User';
+
+    import databaseConfig from '../config/database';
+
+    const models = [User];
+
+    class Database {
+      constructor() {
+        this.init();
+      }
+
+      init() {
+        this.connection = new Sequelize(databaseConfig);
+
+        models.map(model => model.init(this.connection));
+      }
+    }
+
+    export default new Database();
+    ~~~
+  * Depois, abra o arquivo src/app.js e inclui a seguinte linha de cima antes da declaração da classe e embaixo do import das rotas:
+    ~~~javascript
+    import './database';
+    ~~~
+* Criando o controller para o model User:
+  * no diretório src/app/controllers, criar um arquivo chamado UserController.js e incluir o seguinte código:
+    ~~~javascript
+      import User from '../models/User';
+
+      class UserController {
+        async index(req, res) {
+          return res.json({ index: true });
+        }
+
+        async show(req, res) {
+          return res.json({ show: true });
+        }
+
+        async store(req, res) {
+          return res.json({ store: true });
+        }
+
+        async update(req, res) {
+          return res.json({ update: true });
+        }
+
+        async delete(req, res) {
+          return res.json({ delete: true });
+        }
+      }
+
+      export default new UserController();
+    ~~~
+  * Substituir o conteúdo do arquivo src/routes.js pelo de baixo (Se rodar a aplicação, já é possível testar):
+    ~~~javascript
+    import { Router } from 'express';
+
+    import UserController from './app/controllers/UserController';
+
+    const routes = new Router();
+
+    routes.get('/users', UserController.show);
+
+    export default routes;
+    ~~~
+* Implementar a criação do user no banco de dados:
+  * Alterar o método store do arquivo src/app/controller/UserController.js pelo de baixo:
+    ~~~javascript
+    async store(req, res) {
+      const userExists = await User.findOne({ where: { email: req.body.email } });
+
+      if (userExists) {
+        return res.status(400).json({ error: 'User already exists.' });
+      }
+
+      const { id, name, email } = await User.create(req.body);
+
+      return res.json({ id, name, email });
+    }
+    ~~~
+  * Incluir um método POST no arquivo src/routes.js com a chamada desse método:
+    ~~~javascript
+    routes.post('/users', UserController.store);
+    ~~~
+* Implementando autenticação JWT:
+  * Instalar a dependencia jsonwebtoken:
+    ```
+    yarn add jsonwebtoken
+    ```
+  * Criar o controller SessionController.js no diretório src/app/controllers e incluir o seguinte código:
+    ~~~javascript
+    import jwt from 'jsonwebtoken';
+
+    import User from '../models/User';
+
+    import authConfig from '../../config/auth';
+
+    class SessionController {
+      async store(req, res) {
+        const { email, password } = req.body;
+
+        const user = await User.findOne({ where: { email } });
+
+        if (!user) {
+          return res.status(401).json({ error: 'User not found.' });
+        }
+
+        if (!(await user.checkPassword(password))) {
+          return res.status(401).json({ error: 'Password does not match.' });
+        }
+
+        const { id, name } = user;
+
+        return res.json({
+          user: {
+            id,
+            name,
+            email,
+          },
+          token: jwt.sign({ id }, authConfig.secret, {
+            expiresIn: authConfig.expiresIn,
+          }),
+        });
+      }
+    }
+
+    export default new SessionController();
+
+    ~~~
+  * Criar o arquivo auth.js em src/config e incluir o seguinte código:
+    ~~~javascript
+    export default {
+      secret: '', // palavra chave pra validar o token, de preferência, colocar uma palavra difícil, ir em md5online.org e gerar por lá
+      expiresIn: '7d',
+    };
+    ~~~
+  * Incluir os seguintes códigos no arquivo src/routes.js:
+    * Embaixo do import do UserController:
+      ~~~javascript
+      import SessionController from './app/controllers/SessionController';
+      ~~~
+    * Embaixo da chamada do UserController.store:
+      ~~~javascript
+      routes.post('/sessions', SessionController.store);
+      ~~~
+* Adicionar um middleware de autenticação:
+  * Criar o diretório src/app/middlewares e dentro dele o arquivo auth.js e incluir o código abaixo:
+    ~~~javascript
+      import jwt from 'jsonwebtoken';
+
+      import { promisify } from 'util';
+
+      import authConfig from '../../config/auth';
+
+      export default async (req, res, next) => {
+        const authHeader = req.headers.authorization;
+
+        if (!authHeader) {
+          return res.status(401).json({ error: 'Token not provided.' });
+        }
+
+        const [, token] = authHeader.split(' ');
+
+        try {
+          const decoded = await promisify(jwt.verify)(token, authConfig.secret);
+
+          req.userId = decoded.id;
+
+          return next();
+        } catch (error) {
+          return res.status(401).json({ error: 'Token invalid.' });
+        }
+      };
+    ~~~
+  * No arquivo src/routes.js, incluir as seguintes linhas:
+    * Após os imports dos controllers, adicionar a linha abaixo:
+      ~~~javascript
+      import authMiddlware from './app/middlewares/auth';
+      ~~~
+    * Abaixo da rota de POST de session e antes da rota PUT do user, incluir a seguinte linha:
+      ~~~javascript
+      routes.use(authMiddlware);
+      ~~~
 
