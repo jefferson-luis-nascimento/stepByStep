@@ -1,5 +1,11 @@
 # Passo a Passo - Ambiente Desenvolvimento Linux Mint 19.2
 
+### Atualizando o VS Code via terminal:
+  ```
+  wget https://vscode-update.azurewebsites.net/latest/linux-deb-x64/stable -O /tmp/code_latest_amd64.deb
+  sudo dpkg -i /tmp/code_latest_amd64.deb
+  ```
+
 ### 1. Instalando o Node.js e o NPM
 ##### Todos os comando é com o terminal aberto
 * Instalando o nvm (Gerenciador de Pacotes para escolher versões no Node.JS)
