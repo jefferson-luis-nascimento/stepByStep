@@ -669,3 +669,220 @@ para verificar a versão do NPM.
 
     export default new UserController();
     ~~~
+### 5. Enviando email pelo node.js
+* Instalar o nodemailer, express-handlebars e nodemailer-express-handlebars:
+  ```
+  yarn add nodemailer express-handlebars nodemailer-express-handlebars
+  ```
+* Criar o arquivo mail.js no diretório src/config com o seguinte código:
+  ~~~javascript
+  export default {
+    host: 'smtp.mailtrap.io',
+    port: 2525,
+    auth: {
+      user: '', /// seu usuario
+      pass: '', /// sua senha
+    },
+    secure: false,
+    default: {
+      from: 'Equipe FastFeet <noreply@fastfeet.com.br>',
+    },
+  };
+  ~~~
+* Criar os seguintes diretórios e arquivos dentro do diretório app:
+  * Criar o diretório views
+    * Dentro dele, criar o diretório emails
+      * Dentro dele, os diretórios layouts e partials e o arquivo templateMail.hbs
+        * Dentro de layouts, criar o arquivo default.hbs e incluir o código abaixo:
+          ~~~html
+          <div style="font-family: Arial, Helvetica, sans-serif; font-size: 16px; line-height: 1.6; color: #222; max-width: 600px">
+            {{{ body }}}
+            {{> footer }}
+          </div>
+          ~~~
+        * Dentro de partials, criar o arquivo footer.hbs com o seguinte código:
+          ~~~html
+          <br />
+          Equipe FastFeet
+          ~~~
+    * Dentro do arquivo templateMail.hbs, incluir o seguinte código:
+      ~~~html
+      <strong>Olá, {{ deliveryman }}</strong>
+      <p>Hove uma nova entrega, confira os detalhes abaixo:</p>
+      <p>
+        <strong>Destinatário: </strong> {{ recipient }} <br />
+        <strong>Data/hora: </strong> {{ date }} <br />
+        <br />
+        <small>
+          Vá até o loja para retirar sua entrega.
+        </small>
+      </p>
+      ~~~
+* Criar um diretório em src chamado lib e dentro um arquivo chamado Mail.js (src/lib/Mail.js) e incluir o código abaixo:
+  ~~~javascript
+  import nodemailer from 'nodemailer';
+  import { resolve } from 'path';
+  import exphbs from 'express-handlebars';
+  import nodemailerhbs from 'nodemailer-express-handlebars';
+
+  import mailConfig from '../config/mail';
+
+  class Mail {
+    constructor() {
+      const { host, port, secure, auth } = mailConfig;
+      this.transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure,
+        auth: auth.user ? auth : null,
+      });
+
+      this.configureTemplates();
+    }
+
+    configureTemplates() {
+      const viewPath = resolve(__dirname, '..', 'app', 'views', 'emails');
+
+      this.transporter.use(
+        'compile',
+        nodemailerhbs({
+          viewEngine: exphbs.create({
+            layoutsDir: resolve(viewPath, 'layouts'),
+            partialsDir: resolve(viewPath, 'partials'),
+            defaultLayout: 'default',
+            extname: '.hbs',
+          }),
+          viewPath,
+          extName: '.hbs',
+        })
+      );
+    }
+
+    sendMail(message) {
+      return this.transporter.sendMail({
+        ...mailConfig.default,
+        ...message,
+      });
+    }
+  }
+
+  export default new Mail();
+  ~~~
+* Configurar fila de envio de email com o Redis e Bee Queue:
+  * Instalando Redis via docker:
+    ```
+    docker run --name redis -p 6379:6379 -d -t redis:alpine
+    ```
+  * Instalando o Bee Queue:
+    ```
+    yarn add bee-queue
+    ```
+  * Criar o arquivo redis.js em src/config com o seguinte conteúdo:
+    ~~~javascript
+    export default {
+      host: '127.0.0.1',
+      port: 6379,
+    };
+    ~~~
+  * Criar o arquivo Queue.js em src/lib com o seguinte conteúdo:
+    ~~~javascript
+    import Bee from 'bee-queue';
+    import DeliveryMail from '../app/jobs/DeliveryMail';
+
+    import redisConfig from '../config/redis';
+
+    const jobs = [DeliveryMail];
+
+    class Queue {
+      constructor() {
+        this.queues = {};
+
+        this.init();
+      }
+
+      init() {
+        jobs.forEach(({ key, handle }) => {
+          this.queues[key] = {
+            bee: new Bee(key, {
+              redis: redisConfig,
+            }),
+            handle,
+          };
+        });
+      }
+
+      add(queue, job) {
+        return this.queues[queue].bee.createJob(job).save();
+      }
+
+      processQueue() {
+        jobs.forEach(job => {
+          const { bee, handle } = this.queues[job.key];
+
+          bee.on('failed', this.handleFailure).process(handle);
+        });
+      }
+
+      handleFailure(job, err) {
+        console.log(`Queue ${job.queue.name}: FAILED`, err);
+      }
+    }
+
+    export default new Queue();
+    ~~~ 
+  * Criar o diretório src/app/jobs e em seguida criar o arquivo DeliveryMail.js sem src/app/jobs e incluir o código abaixo:
+    ~~~javascript
+    import { parseISO, format } from 'date-fns';
+    import pt from 'date-fns/locale/pt';
+
+    import Mail from '../../lib/Mail';
+
+    class DeliveryMail {
+      get key() {
+        return 'DeliveryMail';
+      }
+
+      async handle({ data }) {
+        const { deliveryman, recipient, createdAt } = data;
+
+        await Mail.sendMail({
+          to: `${deliveryman.name} <${deliveryman.email}>`,
+          subject: 'Nova entrega',
+          template: 'deliveryMail',
+          context: {
+            deliveryman: deliveryman.name,
+            recipient: recipient.name,
+            date: format(parseISO(createdAt), "'dia' dd 'de' MMMM', às' H:mm'h'", {
+              locale: pt,
+            }),
+          },
+        });
+      }
+    }
+
+    export default new DeliveryMail();
+    ~~~
+  * Criar o arquivo queue.js no diretório src e incluir o seguinte código:
+    ~~~javascript
+    import Queue from './lib/Queue';
+
+    Queue.processQueue();
+    ~~~
+  * Incluir as seguintes propriedades no arquivo package.json na propriedade "scripts":
+    ~~~json
+    "queue": "nodemon src/queue.js",
+    "queue:debug": "nodemon --inspect src/queue.js"
+    ~~~
+  * Executar em um terminal o comando abaixo para rodar o serviço de fila:
+    ```
+    yarn queue
+    ```
+  * Para fazer a chamada de envio de e-mail, insira o código abaixo na classe que vai ser necessário enviar o email:
+  ~~~javascript
+  // Colocar os imports onde é feito os outros imports da aplicação
+  import DeliveryMail from '../jobs/DeliveryMail';
+  import Queue from '../../lib/Queue';
+
+  // Esse é o trecho que tem que ser colocado de acordo com seu algforítimo
+  await Queue.add(DeliveryMail.key, { deliveryman, recipient, createdAt });
+  ~~~
