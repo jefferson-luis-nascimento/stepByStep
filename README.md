@@ -48,6 +48,8 @@ para verificar a versão do NPM.
 * Dentro do diretório ```src```, criar os seguintes arquivos: ```app.js```, ```server.js``` e ```routes.js```
 * Incluir o seguinte código no arquivo ```app.js```:
   ~~~javascript
+  import 'dotenv/config';
+
   import express from 'express';
 
   import routes from './routes';
@@ -233,6 +235,43 @@ para verificar a versão do NPM.
   trim_trailing_whitespace = true
   insert_final_newline = true
   ```
+* Instalar o dotenv para usar um arquivo de ambiente:
+  ```
+  yarn add dotenv
+  ```
+* Criar o arquivo .env na raiz do projeto com o seguinte conteúdo:
+  ~~~
+    APP_URL=http://localhost:3333
+    NODE_ENV=development
+
+    # Auth
+    APP_SECRET=
+
+    # Database
+    DB_DIALECT=
+    DB_HOST=
+    DB_USER=
+    DB_PASS=
+    DB_NAME=
+
+    # MonggoDB
+    MONGO_URL=
+
+    # Redis
+    REDIS_HOST=127.0.0.1
+    PORT=6379
+
+    # Email
+    MAIL_HOST=
+    MAIL_PORT=
+    MAIL_USER=
+    MAIL_PASS=
+    MAIL_FROM=
+
+    # Sentry
+    SENTRY_DSN=
+
+  ~~~
 * Configurando a estrutura de pastas e arquivos e o Sequelize
   * Na pasta src, criar as seguintes pastas e arquivos: 
     * config
@@ -864,6 +903,8 @@ para verificar a versão do NPM.
     ~~~
   * Criar o arquivo queue.js no diretório src e incluir o seguinte código:
     ~~~javascript
+    import express from 'express';
+
     import Queue from './lib/Queue';
 
     Queue.processQueue();
@@ -886,3 +927,68 @@ para verificar a versão do NPM.
   // Esse é o trecho que tem que ser colocado de acordo com seu algforítimo
   await Queue.add(DeliveryMail.key, { deliveryman, recipient, createdAt });
   ~~~
+### 6. Tratamento de exeções no node.js
+* Instalar o sentry, express-async-errors e o youch:
+  ```
+  yarn add @sentry/node@5.14.2
+  yarn add express-async-error
+  yarn add youch 
+  ```
+* Criar o arquivo sentry.js em src/config:
+
+* Ajustar o arquivo src/app.js com o conteúdo abaixo:
+  ~~~javascript
+  import 'dotenv/config';
+  import { resolve } from 'path';
+  import express from 'express';
+  import 'express-async-errors';
+  import * as Sentry from '@sentry/node';
+  import Youch from 'youch';
+
+  import routes from './routes';
+
+  import './database';
+
+  import sentryConfig from './config/sentry';
+
+  class App {
+    constructor() {
+      this.server = express();
+
+      Sentry.init(sentryConfig);
+
+      this.middlewares();
+      this.routes();
+      this.exceptionHandler();
+    }
+
+    middlewares() {
+      this.server.use(Sentry.Handlers.requestHandler());
+      this.server.use(express.json());
+      this.server.use(
+        '/files',
+        express.static(resolve(__dirname, '..', 'tmp', 'uploads'))
+      );
+    }
+
+    routes() {
+      this.server.use(routes);
+      this.server.use(Sentry.Handlers.errorHandler());
+    }
+
+    exceptionHandler() {
+      this.server.use(async (err, req, res, next) => {
+        if (process.env.NODE_ENV === 'development') {
+          const errors = await new Youch(err, req).toJSON();
+
+          return res.status(500).json(errors);
+        }
+
+        return res.status(500).json({ error: 'Internal server error.' });
+      });
+    }
+  }
+
+  export default new App().server;
+  ~~~ 
+
